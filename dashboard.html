@@ -1,0 +1,47 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Dashboard</title>
+<style>
+body { font-family: Arial; background:#111; color:white; padding:20px; }
+.box { background:#222; padding:15px; margin:10px 0; border-radius:8px; }
+</style>
+</head>
+
+<body>
+
+<h1>📊 Link Checker</h1>
+
+<div class="box">
+Total: <span id="total"></span><br>
+OK: <span id="ok"></span><br>
+Broken: <span id="broken"></span><br>
+Timeout: <span id="timeout"></span>
+</div>
+
+<div class="box">
+<h3>❌ Broken Links</h3>
+<ul id="list"></ul>
+</div>
+
+<script>
+fetch('report.json')
+.then(r=>r.json())
+.then(d=>{
+  total.innerText=d.total;
+  ok.innerText=d.ok.length;
+  broken.innerText=d.broken.length;
+  timeout.innerText=d.timeout.length;
+
+  d.broken.forEach(x=>{
+    let li=document.createElement("li");
+    li.innerText=x;
+    list.appendChild(li);
+  });
+})
+.catch(()=>alert("report.json belum ada"));
+</script>
+
+</body>
+</html>
