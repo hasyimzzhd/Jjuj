@@ -1,6 +1,19 @@
 {
-  "total": 0,
-  "ok": [],
+  "total": 3,
+  "ok": [
+    {
+      "url": "https://google.com",
+      "status": 200
+    },
+    {
+      "url": "https://github.com",
+      "status": 200
+    },
+    {
+      "url": "https://youtube.com",
+      "status": 200
+    }
+  ],
   "broken": [],
   "timeout": []
 }
