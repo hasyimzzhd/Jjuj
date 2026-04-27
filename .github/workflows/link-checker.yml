@@ -1,0 +1,136 @@
+name: Daily Link Checker
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'README.md'
+      - '.github/workflows/link-checker.yml'
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install deps
+      run: |
+        npm init -y
+        npm install axios markdown-link-extractor
+
+    - name: Create script
+      run: |
+        cat > checker.js << 'EOF'
+        const fs = require('fs');
+        const axios = require('axios');
+        const extract = require('markdown-link-extractor');
+
+        class Checker {
+          constructor() {
+            this.ok = [];
+            this.broken = [];
+            this.timeout = [];
+          }
+
+          async check(url) {
+            try {
+              const res = await axios({
+                url,
+                method: 'HEAD',
+                timeout: 15000,
+                maxRedirects: 5,
+                validateStatus: () => true
+              });
+
+              this.ok.push({ url, status: res.status });
+              console.log(`✅ ${url} (${res.status})`);
+
+            } catch (e) {
+              if (e.code === 'ECONNABORTED') {
+                this.timeout.push(url);
+                console.log(`⏱️ ${url}`);
+              } else {
+                this.broken.push(url);
+                console.log(`❌ ${url}`);
+              }
+            }
+          }
+
+          getLinks(text) {
+            return [...new Set(
+              extract(text).filter(l => l.startsWith('http'))
+            )];
+          }
+
+          async run() {
+            const md = fs.readFileSync('README.md', 'utf8');
+            const links = this.getLinks(md);
+
+            console.log(`Found ${links.length} links`);
+
+            for (const link of links) {
+              await this.check(link);
+              await new Promise(r => setTimeout(r, 800));
+            }
+
+            fs.writeFileSync('report.json', JSON.stringify({
+              total: links.length,
+              ok: this.ok,
+              broken: this.broken,
+              timeout: this.timeout
+            }, null, 2));
+
+            console.log("\n=== DONE ===");
+            console.log(`OK: ${this.ok.length}`);
+            console.log(`Broken: ${this.broken.length}`);
+            console.log(`Timeout: ${this.timeout.length}`);
+
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT,
+                `broken=${this.broken.length}\n`
+              );
+            }
+          }
+        }
+
+        new Checker().run();
+        EOF
+
+    - name: Run checker
+      id: run
+      run: node checker.js
+
+    - name: Upload report
+      uses: actions/upload-artifact@v4
+      with:
+        name: report
+        path: report.json
+
+    - name: Create issue if broken
+      if: steps.run.outputs.broken > 0
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('report.json','utf8'));
+
+          let body = `## 🚨 Broken Links\n\n`;
+          data.broken.forEach(l => body += `- ${l}\n`);
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: "Broken Links Detected",
+            body: body,
+            labels: ["bug"]
+          });
